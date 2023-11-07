@@ -120,7 +120,7 @@ with open('../results/T6SS_CPU_test.pickle', 'wb') as handle:
 exit()
 """
 
-with open("../results/T6SS_GPU_test.pickle", "rb") as input_file:
+with open("../results/T6SS_CPU_test.pickle", "rb") as input_file:
     seqs_embeddings2 = pickle.load(input_file)
 seqs_embeddings2 = np.asarray(seqs_embeddings2)
 print(len(seqs_embeddings2[0]))
