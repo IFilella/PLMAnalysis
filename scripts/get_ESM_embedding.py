@@ -31,7 +31,7 @@ def read_fasta(fasta, unalign=False, delimiter='None'):
         labels = [title.split(delimiter)[0] for title in titles]
         return seqs, titles, labels
     else:
-        return seqs, titles
+        return seqs, titles, None
 
 def get_GPU_memory():
     current_memory = torch.cuda.memory_allocated()
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     verbose = args.verbose
     fasta = args.fasta
-    batch_size = args.batch
+    batch_size = int(args.batch)
     delimiter = args.deli
     model = args.model
     outname = args.out
