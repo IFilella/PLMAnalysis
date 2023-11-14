@@ -119,11 +119,16 @@ if __name__ == '__main__':
     data = [(titles[i], seqs[i]) for i in range(len(seqs))]
 
     # Load ESM-2 model
-    print('Loading ESM-2 model')
+    print('Loading ESM-2 %s model' % model)
     if model == '650M':
         model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
+        layers = 33
     elif model == '3B':
         model, alphabet = esm.pretrained.esm2_t36_3B_UR50D()
+        layers = 36
+    elif model == '15B':
+        model, alphabet = esm.pretrained.esm2_t48_15B_UR50D()
+        layers = 48
     else:
         raise ValueError('Model must be either 650M or 3B')
     model.to(device)
@@ -155,8 +160,8 @@ if __name__ == '__main__':
 
         # Extract per-residue representations
         with torch.no_grad():
-            results = model(batch_tokens, repr_layers=[33], return_contacts=False)
-        token_representations = results["representations"][33]
+            results = model(batch_tokens, repr_layers=[layers], return_contacts=False)
+        token_representations = results["representations"][layers]
         if verbose:
             print('After getting the embedding')
             get_GPU_memory(device=device)
@@ -168,7 +173,7 @@ if __name__ == '__main__':
         sequence_representations = []
         for i, tokens_len in enumerate(batch_lens):
             seq_token_representations = token_representations[i, 1 : tokens_len - 1].mean(0)
-            if device == 'cuda':
+            if 'cuda' in device:
                 seq_token_representations = seq_token_representations.to('cpu')
             sequence_representations.append(seq_token_representations)
         if verbose:
@@ -180,9 +185,14 @@ if __name__ == '__main__':
     end_time = time.time()
     execution_time = end_time - start_time
 
-    with open('%s.pickle'%outname, 'wb') as handle:
+    with open('%s_embeddings.pickle' % outname, 'wb') as handle:
         pickle.dump(seqs_embeddings, handle,
                     protocol=pickle.HIGHEST_PROTOCOL)
+    if delimiter is not None:
+        with open('%s_labels.pickle' % outname, 'wb') as handle:
+            pickle.dump(labels, handle,
+                        protocol=pickle.HIGHEST_PROTOCOL)
+
 
     print("---------Finished embedding the sequences---------")
     print('Execution time: %.2f s' % execution_time)
