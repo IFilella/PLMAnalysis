@@ -1,3 +1,4 @@
+import time
 import torch
 import esm
 import tensorflow as tf
@@ -9,10 +10,10 @@ import seaborn as sns
 
 
 def get_tensor_shape(tensor, device):
-    if device == 'cuda':
-        shape = tensor.cpu().detach().numpy().shape
-    elif device == 'cpu':
+    if device == 'cpu':
         shape = tensor.numpy().shape
+    else:
+        shape = tensor.cpu().detach().numpy().shape
     return shape
 
 def read_fasta(fasta, unalign=False, delimiter='None'):
@@ -33,15 +34,26 @@ def read_fasta(fasta, unalign=False, delimiter='None'):
     else:
         return seqs, titles, None
 
-def get_GPU_memory():
-    current_memory = torch.cuda.memory_allocated()
-    reserved_memory = torch.cuda.memory_reserved()
-    max_reserved_memory = torch.cuda.max_memory_reserved()
+def select_device():
+    free, total = torch.cuda.mem_get_info(device='cuda:0')
+    perc0 =  ((total - free) / total) * 100
+    free, total = torch.cuda.mem_get_info(device='cuda:1')
+    perc1 =  ((total - free) / total) * 100
+    print('GPU 0: %.2f%%' % perc0)
+    print('GPU 1: %.2f%%' % perc1)
+    if perc0 > perc1:
+        return "cuda:1"
+    else: return "cuda:0"
+
+def get_GPU_memory(device):
+    current_memory = torch.cuda.memory_allocated(device)
+    reserved_memory = torch.cuda.memory_reserved(device)
+    max_reserved_memory = torch.cuda.max_memory_reserved(device)
     print('.........GPU Memory.........')
     print(f"Current GPU memory usage: {current_memory / 1024 / 1024:.2f} MB")
     print(f"Reserved GPU memory: {reserved_memory / 1024 / 1024:.2f} MB")
     print(f"Max Reserved GPU memory: {max_reserved_memory / 1024 / 1024:.2f} MB")
-    free, total = torch.cuda.mem_get_info()
+    free, total = torch.cuda.mem_get_info(device)
     print(f'Free {free / 1024 / 1024:.3f} MB ')
     print(f'Total {total / 1024 / 1024:.3f} MB ')
     print('...........................')
@@ -97,14 +109,17 @@ if __name__ == '__main__':
 
     # Select CPU or GPU
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if device == 'cuda':
+        device = select_device()
     if verbose:
         print(device)
-        get_GPU_memory()
+        get_GPU_memory(device=device)
 
     seqs, titles, labels = read_fasta(fasta, unalign=True, delimiter=delimiter)
     data = [(titles[i], seqs[i]) for i in range(len(seqs))]
 
     # Load ESM-2 model
+    print('Loading ESM-2 model')
     if model == '650M':
         model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
     elif model == '3B':
@@ -116,9 +131,12 @@ if __name__ == '__main__':
     model.eval()  # disables dropout for deterministic results
     if verbose:
         print('After loading the model')
-        get_GPU_memory()
+        get_GPU_memory(device=device)
 
     # Get the sequence embeddings
+    start_time = time.time()
+
+    print('Embedding the sequences')
     seqs_embeddings = []
     for i in range(0, len(data), batch_size):
         print('%d / %d' % (i, len(data)))
@@ -128,7 +146,7 @@ if __name__ == '__main__':
         batch_tokens = batch_tokens.to(device)
         if verbose:
             print('After tokenizing')
-            get_GPU_memory()
+            get_GPU_memory(device=device)
             #print(batch_labels)
             #print(batch_strs)
             #print(batch_tokens)
@@ -141,7 +159,7 @@ if __name__ == '__main__':
         token_representations = results["representations"][33]
         if verbose:
             print('After getting the embedding')
-            get_GPU_memory()
+            get_GPU_memory(device=device)
             #print(token_representations)
             shape = get_tensor_shape(token_representations, device)
             print(shape)
@@ -159,9 +177,16 @@ if __name__ == '__main__':
         for sequence_representation in sequence_representations:
             seqs_embeddings.append(sequence_representation)
 
+    end_time = time.time()
+    execution_time = end_time - start_time
+
     with open('%s.pickle'%outname, 'wb') as handle:
         pickle.dump(seqs_embeddings, handle,
                     protocol=pickle.HIGHEST_PROTOCOL)
+
+    print("---------Finished embedding the sequences---------")
+    print('Execution time: %.2f s' % execution_time)
+
 
     #perps = [10,15,20,30,40]
     #metrics = ['l2', 'braycurtis', 'correlation', 'l1', 'manhattan', 'euclidean', 'cityblock' , 'minkowski','sqeuclidean', 'cosine', 'minkowski', 'nan_euclidean', 'canberra']
